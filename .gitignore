@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Rust
+target/
+**/*.rs.bk
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Generated Content
+release_context.md
+rust_release_context.md
