@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, Play, Loader2, FileText, Upload, Copy, Bot, RefreshCw, WifiOff, Wifi } from "lucide-react";
+import { FolderOpen, Play, Loader2, FileText, Upload, Copy, Bot, RefreshCw, WifiOff, Wifi, Settings } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -19,10 +19,38 @@ function App() {
   const [mode, setMode] = useState<"manual" | "auto">("auto");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaStatus, setOllamaStatus] = useState<"checking" | "ok" | "error">("checking");
+  
+  // Template State
+  const [templates, setTemplates] = useState<string[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
+  const [systemPrompt, setSystemPrompt] = useState<string>("");
 
   useEffect(() => {
     checkOllama();
+    loadTemplates();
   }, []);
+
+  // When template changes, load content
+  useEffect(() => {
+    if (selectedTemplate) {
+        invoke("load_template_cmd", { filename: selectedTemplate })
+            .then(content => setSystemPrompt(content as string))
+            .catch(e => console.error("Failed to load template:", e));
+    }
+  }, [selectedTemplate]);
+
+  const loadTemplates = async () => {
+      try {
+          const list = await invoke("list_templates_cmd");
+          const tmpls = list as string[];
+          setTemplates(tmpls);
+          // Select default if available, or first one
+          if (tmpls.includes("default.md")) setSelectedTemplate("default.md");
+          else if (tmpls.length > 0) setSelectedTemplate(tmpls[0]);
+      } catch (e) {
+          console.error("Failed to load templates:", e);
+      }
+  };
 
   const checkOllama = async () => {
     setOllamaStatus("checking");
@@ -68,7 +96,7 @@ function App() {
       filters: [{ name: "Markdown/Text", extensions: ["md", "txt"] }],
     });
 
-    if (!selected) return;
+    if (!selected) return; 
     
     try {
       const content = await invoke("load_file_cmd", { filePath: selected as string });
@@ -118,7 +146,9 @@ function App() {
             const res = await invoke("generate_preview_cmd", {
                 repoPath, start: startRef, end: endRef, notes
             });
-            const fullPrompt = `*** SYSTEM PROMPT ***\n[Paste your system prompt here or configure in settings]\n\n*** DATA ***\n${res}`;
+            // Use the loaded system prompt instead of placeholder
+            const promptContent = systemPrompt || "[No template loaded]";
+            const fullPrompt = `${promptContent}\n\n*** DATA TO PROCESS ***\n\n${res}`;
             setAiContent(fullPrompt as string);
         } catch (e) {
             setAiContent(`Error generating context: ${e}`);
@@ -134,10 +164,10 @@ function App() {
 
         setAiContent(""); // Clear previous content
         try {
-            // The command now returns the full string at the end, but we also listen to events
-            // We ignore the return value here to avoid double-appending, or we can use it to verify completion
+            // Pass the loaded system prompt content
             await invoke("generate_ai_cmd", {
-                repoPath, start: startRef, end: endRef, notes, model, systemPrompt: null
+                repoPath, start: startRef, end: endRef, notes, model, 
+                systemPrompt: systemPrompt || undefined
             });
         } catch (e) {
             setAiContent(prev => prev + `\n\nError generating release notes: ${e}`);
@@ -223,37 +253,62 @@ function App() {
             </div>
           </div>
 
-          {/* AI Settings (Only in Auto Mode) */}
-          {mode === "auto" && (
-              <div className="space-y-2">
-                 <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Ollama Model</label>
-                    <button onClick={checkOllama} title="Refresh Models" className="text-slate-400 hover:text-slate-600">
-                        <RefreshCw size={12} className={ollamaStatus === "checking" ? "animate-spin" : ""} />
-                    </button>
-                 </div>
-                 
-                 {ollamaStatus === "ok" ? (
-                     <div className="relative">
-                         <select 
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
-                            value={model}
-                            onChange={(e) => setModel(e.target.value)}
-                         >
-                            {ollamaModels.map(m => <option key={m} value={m}>{m}</option>)}
-                         </select>
-                         <div className="absolute right-3 top-2.5 pointer-events-none">
-                             <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                         </div>
-                     </div>
-                 ) : (
-                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-md flex items-center gap-2 text-xs text-rose-700">
-                        <WifiOff size={14} />
-                        <span>Ollama not detected.</span>
-                     </div>
-                 )}
+          {/* Generation Settings (Prompt & Model) */}
+          <div className="space-y-3 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2">
+                  <Settings size={14} className="text-slate-400"/>
+                  <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Settings</label>
               </div>
-          )}
+
+              {/* Prompt Template Selection */}
+              <div className="space-y-1">
+                 <label className="text-[10px] font-medium text-slate-400">Prompt Template</label>
+                 <div className="relative">
+                     <select 
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                        value={selectedTemplate}
+                        onChange={(e) => setSelectedTemplate(e.target.value)}
+                     >
+                        {templates.map(t => <option key={t} value={t}>{t}</option>)}
+                     </select>
+                     <div className="absolute right-3 top-2.5 pointer-events-none">
+                         <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                     </div>
+                 </div>
+              </div>
+
+              {/* AI Settings (Only in Auto Mode) */}
+              {mode === "auto" && (
+                  <div className="space-y-1">
+                     <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-medium text-slate-400">Ollama Model</label>
+                        <button onClick={checkOllama} title="Refresh Models" className="text-slate-400 hover:text-slate-600">
+                            <RefreshCw size={10} className={ollamaStatus === "checking" ? "animate-spin" : ""} />
+                        </button>
+                     </div>
+                     
+                     {ollamaStatus === "ok" ? (
+                         <div className="relative">
+                             <select 
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                                value={model}
+                                onChange={(e) => setModel(e.target.value)}
+                             >
+                                {ollamaModels.map(m => <option key={m} value={m}>{m}</option>)}
+                             </select>
+                             <div className="absolute right-3 top-2.5 pointer-events-none">
+                                 <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                             </div>
+                         </div>
+                     ) : (
+                         <div className="p-2 bg-rose-50 border border-rose-200 rounded-md flex items-center gap-2 text-xs text-rose-700">
+                            <WifiOff size={12} />
+                            <span>Offline</span>
+                         </div>
+                     )}
+                  </div>
+              )}
+          </div>
         </div>
 
         {/* Footer Actions */}

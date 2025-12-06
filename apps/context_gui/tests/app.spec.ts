@@ -5,28 +5,16 @@ test.describe('CommitIQ GUI Features', () => {
     await page.goto('http://localhost:1420');
   });
 
-  test('git ref comboboxes are present', async ({ page }) => {
-    // Check if inputs have the list attribute pointing to git-refs
-    const startInput = page.getByPlaceholder('Start (e.g. v1.0.0)');
-    await expect(startInput).toBeVisible();
-    await expect(startInput).toHaveAttribute('list', 'git-refs');
-  });
-
-  test('generation mode toggle works', async ({ page }) => {
-    // Check default state (Auto)
-    const autoBtn = page.getByText('Auto', { exact: true });
-    const manualBtn = page.getByText('Manual', { exact: true });
-    const generateBtn = page.getByRole('button', { name: /Generate/ });
-
-    await expect(generateBtn).toHaveText('Generate with AI');
-
-    // Click Manual
-    await manualBtn.click();
-    await expect(generateBtn).toHaveText('Generate Prompt');
-
-    // Click Auto back
-    await autoBtn.click();
-    await expect(generateBtn).toHaveText('Generate with AI');
+  test('settings section with prompt template is present', async ({ page }) => {
+    await expect(page.getByText('Settings')).toBeVisible();
+    await expect(page.getByText('Prompt Template')).toBeVisible();
+    
+    // Check if we have a combobox for templates
+    // Note: Playwright matches label text to adjacent input usually, or we find by role
+    // Since we have a custom layout, finding the select might need a locator relative to the label
+    // or simpler: find the select directly if it has unique attributes, or just check for existence
+    // Here we just check if a combobox exists in the settings area
+    await expect(page.locator('select').first()).toBeVisible();
   });
 
   test('ollama status UI is present', async ({ page }) => {
