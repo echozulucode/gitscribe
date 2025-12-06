@@ -57,18 +57,37 @@ python src/generate_context.py --start HEAD~5 --end HEAD --notes docs/strategic-
    ./rust-context-gen/target/release/rust-context-gen --start <START_HASH> --end <END_HASH> [OPTIONS]
    ```
 
+### Advanced Features (Rust Only)
+
+The Rust implementation supports direct integration with AI workflows.
+
+#### 1. Manual Prompt Injection
+Automatically prepend a system prompt (e.g., your "Role" and "Instructions") to the generated context. This creates a single file ready to copy-paste into ChatGPT or Claude.
+
+```bash
+./rust-context-gen ... --system-prompt docs/ai/release-notes-prompt.md --output full_prompt.md
+```
+
+#### 2. Ollama Integration (Auto-Generate)
+Directly generate release notes using a local Ollama instance.
+
+```bash
+./rust-context-gen ... --ollama-model llama3 --system-prompt docs/ai/release-notes-prompt.md --output release_notes.md
+```
+
 ---
 
 ## CLI Arguments
 
-Both versions support the same arguments:
-
-| Argument | Required | Description | Default |
-|----------|:--------:|-------------|---------|
-| `--start` | Yes | The starting commit hash or tag (exclusive). | - |
-| `--end` | Yes | The ending commit hash or tag (inclusive). | - |
-| `--notes` | No | Path to a Markdown file containing adhoc/strategic notes. | None |
-| `--output` | No | The filename for the generated context. | `release_context.md` |
+| Argument | Required | Description | Default | Supported In |
+|----------|:--------:|-------------|---------|:------------:|
+| `--start` | Yes | Starting commit hash (exclusive). | - | Both |
+| `--end` | Yes | Ending commit hash (inclusive). | - | Both |
+| `--notes` | No | Path to adhoc notes file. | None | Both |
+| `--output` | No | Output filename. | `release_context.md` | Both |
+| `--system-prompt` | No | Prepend a prompt file to the context. | None | **Rust** |
+| `--ollama-model` | No | Trigger auto-generation using this model name. | None | **Rust** |
+| `--ollama-url` | No | Custom Ollama API URL. | `http://localhost:11434...` | **Rust** |
 
 ## Output Format
 

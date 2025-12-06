@@ -1,8 +1,9 @@
 [package]
-name = "rust-context-gen"
+name = "context_cli"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.3", features = ["derive"] }
 anyhow = "1.0.100"
+context_core = { path = "../context_core" }
