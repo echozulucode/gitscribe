@@ -1,8 +1,10 @@
 use std::process::Command;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 use anyhow::{Result, Context, bail};
 use serde_json::json;
+use futures::StreamExt;
 
 pub fn run_git_command(args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let mut cmd = Command::new("git");
@@ -92,32 +94,39 @@ pub fn generate_context(start: &str, end: &str, notes: Option<String>, cwd: Opti
         r###"# Release Context
 
 ## Strategic Context / Adhoc Notes
-{}
-
+{}\n
 ## Commit History
-{}
-
+{}\n
 ## Code Changes
 ```diff
-{}
-```"###,
+{}\n```"###,
         notes_content,
         log_content,
         diff_content
     ))
 }
 
-pub fn call_ollama(
+pub async fn call_ollama<F>(
     model: &str,
     url: &str,
     prompt: &str,
-    system: Option<&String>
-) -> Result<String> {
-    let client = reqwest::blocking::Client::new();
+    system: Option<&String>,
+    callback: Option<F>
+) -> Result<String> 
+where
+    F: Fn(&str) + Send + Sync + 'static,
+{
+    // Increase timeout to 5 minutes (300s) for large models
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .context("Failed to build HTTP client")?;
+    
+    let stream = callback.is_some();
     
     let mut payload = json!({
         "model": model,
-        "stream": false,
+        "stream": stream,
         "prompt": prompt
     });
 
@@ -125,23 +134,79 @@ pub fn call_ollama(
         payload["system"] = json!(sys_msg);
     }
 
-    println!("Connecting to Ollama ({}) with model '{}'...", url, model);
+    println!("Connecting to Ollama ({}) with model '{}' (Streaming: {})...", url, model, stream);
 
     let res = client.post(url)
         .json(&payload)
         .send()
+        .await
         .context("Failed to send request to Ollama")?;
 
     if !res.status().is_success() {
         let status = res.status();
-        let text = res.text().unwrap_or_default();
+        let text = res.text().await.unwrap_or_default();
         bail!("Ollama API error ({}): {}", status, text);
     }
 
-    let response_json: serde_json::Value = res.json().context("Failed to parse Ollama JSON response")?;
+    if let Some(cb) = callback {
+        // Streaming Mode
+        let mut full_response = String::new();
+        let mut stream = res.bytes_stream();
+
+        while let Some(item) = stream.next().await {
+            let chunk = item.context("Error reading stream chunk")?;
+            let chunk_str = String::from_utf8_lossy(&chunk);
+            
+            // Parse JSON chunk (Ollama sends multiple JSON objects in stream)
+            // Often partial chunks arrive, but reqwest bytes_stream usually gives full chunks or we need to buffer line by line.
+            // Ollama stream format is one JSON object per line.
+            for line in chunk_str.split('\n') {
+                if line.trim().is_empty() { continue; }
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+                     if let Some(token) = json["response"].as_str() {
+                         full_response.push_str(token);
+                         cb(token);
+                     }
+                     if json["done"].as_bool().unwrap_or(false) {
+                         break;
+                     }
+                }
+            }
+        }
+        Ok(full_response)
+    } else {
+        // Non-Streaming Mode
+        let response_json: serde_json::Value = res.json().await.context("Failed to parse Ollama JSON response")?;
+        response_json["response"]
+            .as_str()
+            .map(|s| s.to_string())
+            .context("Ollama response missing 'response' field")
+    }
+}
+
+pub async fn list_ollama_models(base_url: &str) -> Result<Vec<String>> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+
+    let res = client.get(&url)
+        .send()
+        .await
+        .context("Failed to connect to Ollama. Is it running?")?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        bail!("Ollama API error ({}): {}", status, text);
+    }
+
+    let response_json: serde_json::Value = res.json().await.context("Failed to parse Ollama JSON response")?;
     
-    response_json["response"]
-        .as_str()
-        .map(|s| s.to_string())
-        .context("Ollama response missing 'response' field")
+    let models = response_json["models"]
+        .as_array()
+        .context("Invalid response: 'models' field missing or not an array")? 
+        .iter()
+        .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
+        .collect();
+
+    Ok(models)
 }

@@ -28,4 +28,16 @@ test.describe('CommitIQ GUI Features', () => {
     await autoBtn.click();
     await expect(generateBtn).toHaveText('Generate with AI');
   });
+
+  test('ollama status UI is present', async ({ page }) => {
+    // Ensure we are in Auto mode
+    await page.getByText('Auto', { exact: true }).click();
+
+    // Check for the model label
+    await expect(page.getByText('OLLAMA MODEL')).toBeVisible();
+
+    // Since Ollama might not be running in the test env, we expect either the dropdown OR the error message
+    // We can check for the refresh button which is always there
+    await expect(page.getByTitle('Refresh Models')).toBeVisible();
+  });
 });

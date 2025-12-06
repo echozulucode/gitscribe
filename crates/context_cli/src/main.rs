@@ -37,7 +37,8 @@ struct Args {
     ollama_url: String,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     println!("Generating context from {} to {}...", args.start, args.end);
@@ -54,13 +55,23 @@ fn main() -> Result<()> {
         // --- AUTO MODE (Ollama) ---
         println!("Mode: Auto-Generate (Ollama)");
         
+        // CLI uses simple blocking behavior without streaming callback for now, or we could print dots?
+        let callback = |token: &str| {
+            use std::io::{self, Write};
+            print!("{}", token);
+            let _ = io::stdout().flush();
+        };
+
         let final_output = call_ollama(
             &model, 
             &args.ollama_url, 
             &context, 
-            system_prompt_content.as_ref()
-        )?;
+            system_prompt_content.as_ref(),
+            Some(callback)
+        ).await?;
         
+        println!("\n\n--- Generation Complete ---");
+
         let output_path = args.output.unwrap_or_else(|| "release_notes.md".to_string());
         fs::write(&output_path, final_output)
             .context(format!("Failed to write output to {}", output_path))?;

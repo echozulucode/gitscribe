@@ -7,3 +7,4 @@ edition = "2021"
 clap = { version = "4.5.3", features = ["derive"] }
 anyhow = "1.0.100"
 context_core = { path = "../context_core" }
+tokio = { version = "1.48.0", features = ["full", "macros"] }

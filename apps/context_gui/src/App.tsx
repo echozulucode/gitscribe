@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, Play, Loader2, FileText, Upload, Copy, Bot } from "lucide-react";
+import { FolderOpen, Play, Loader2, FileText, Upload, Copy, Bot, RefreshCw, WifiOff, Wifi } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 function App() {
@@ -16,6 +17,31 @@ function App() {
   const [aiContent, setAiContent] = useState("");
   const [model, setModel] = useState("llama3");
   const [mode, setMode] = useState<"manual" | "auto">("auto");
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [ollamaStatus, setOllamaStatus] = useState<"checking" | "ok" | "error">("checking");
+
+  useEffect(() => {
+    checkOllama();
+  }, []);
+
+  const checkOllama = async () => {
+    setOllamaStatus("checking");
+    try {
+      const models = await invoke("get_ollama_models_cmd");
+      setOllamaModels(models as string[]);
+      setOllamaStatus("ok");
+      
+      const available = models as string[];
+      if (available.length > 0 && !available.includes(model)) {
+        if (available.some(m => m.includes("llama3"))) setModel(available.find(m => m.includes("llama3"))!);
+        else if (available.some(m => m.includes("mistral"))) setModel(available.find(m => m.includes("mistral"))!);
+        else setModel(available[0]);
+      }
+    } catch (e) {
+      setOllamaStatus("error");
+      console.error("Ollama check failed:", e);
+    }
+  };
 
   const handleOpenRepo = async () => {
     const selected = await open({
@@ -26,7 +52,6 @@ function App() {
 
     if (selected) {
       setRepoPath(selected as string);
-      // Fetch Refs
       try {
         const fetchedRefs = await invoke("get_repo_refs_cmd", { repoPath: selected as string });
         setRefs(fetchedRefs as string[]);
@@ -72,20 +97,27 @@ function App() {
     }
   }, [repoPath, startRef, endRef, notes, activeTab]);
 
+  // Streaming Listener
+  useEffect(() => {
+    const unlisten = listen<string>("ai-token", (event) => {
+        setAiContent(prev => prev + event.payload);
+    });
+    return () => {
+        unlisten.then(f => f());
+    };
+  }, []);
+
   const handleGenerate = async () => {
     if (!repoPath || !startRef || !endRef) return;
     setIsGenerating(true);
     setActiveTab("result");
 
     if (mode === "manual") {
-        // Manual Mode: Just generate the full prompt context and show it
         setAiContent("Generating Context for Manual Copy...");
         try {
-             // Reuse preview logic but formatted as final output
             const res = await invoke("generate_preview_cmd", {
                 repoPath, start: startRef, end: endRef, notes
             });
-            // Prepend a standard header/prompt instruction
             const fullPrompt = `*** SYSTEM PROMPT ***\n[Paste your system prompt here or configure in settings]\n\n*** DATA ***\n${res}`;
             setAiContent(fullPrompt as string);
         } catch (e) {
@@ -94,15 +126,21 @@ function App() {
             setIsGenerating(false);
         }
     } else {
-        // Auto Mode: Call Ollama
-        setAiContent("Initializing AI Model (" + model + ")... Please wait.");
+        if (ollamaStatus !== "ok") {
+            setAiContent("Error: Ollama is not detected. Please verify it is running on http://localhost:11434");
+            setIsGenerating(false);
+            return;
+        }
+
+        setAiContent(""); // Clear previous content
         try {
-            const res = await invoke("generate_ai_cmd", {
+            // The command now returns the full string at the end, but we also listen to events
+            // We ignore the return value here to avoid double-appending, or we can use it to verify completion
+            await invoke("generate_ai_cmd", {
                 repoPath, start: startRef, end: endRef, notes, model, systemPrompt: null
             });
-            setAiContent(res as string);
         } catch (e) {
-            setAiContent(`Error generating release notes: ${e}`);
+            setAiContent(prev => prev + `\n\nError generating release notes: ${e}`);
         } finally {
             setIsGenerating(false);
         }
@@ -114,8 +152,14 @@ function App() {
       {/* Sidebar */}
       <aside className="w-80 border-r border-slate-200 bg-slate-50 flex flex-col">
         {/* Header */}
-        <div className="h-14 flex items-center px-4 border-b border-slate-200">
+        <div className="h-14 flex items-center justify-between px-4 border-b border-slate-200">
           <span className="font-bold text-lg tracking-tight text-slate-900">CommitIQ</span>
+          
+          <div className="flex items-center gap-1.5" title={ollamaStatus === "ok" ? "Ollama Connected" : "Ollama Disconnected"}>
+            {ollamaStatus === "checking" && <Loader2 size={14} className="animate-spin text-slate-400" />}
+            {ollamaStatus === "ok" && <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
+            {ollamaStatus === "error" && <div className="w-2 h-2 rounded-full bg-rose-500" />}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -182,13 +226,32 @@ function App() {
           {/* AI Settings (Only in Auto Mode) */}
           {mode === "auto" && (
               <div className="space-y-2">
-                 <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Ollama Model</label>
-                 <input 
-                    type="text" 
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                 />
+                 <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Ollama Model</label>
+                    <button onClick={checkOllama} title="Refresh Models" className="text-slate-400 hover:text-slate-600">
+                        <RefreshCw size={12} className={ollamaStatus === "checking" ? "animate-spin" : ""} />
+                    </button>
+                 </div>
+                 
+                 {ollamaStatus === "ok" ? (
+                     <div className="relative">
+                         <select 
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                            value={model}
+                            onChange={(e) => setModel(e.target.value)}
+                         >
+                            {ollamaModels.map(m => <option key={m} value={m}>{m}</option>)}
+                         </select>
+                         <div className="absolute right-3 top-2.5 pointer-events-none">
+                             <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                         </div>
+                     </div>
+                 ) : (
+                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-md flex items-center gap-2 text-xs text-rose-700">
+                        <WifiOff size={14} />
+                        <span>Ollama not detected.</span>
+                     </div>
+                 )}
               </div>
           )}
         </div>
@@ -197,9 +260,9 @@ function App() {
         <div className="p-4 border-t border-slate-200 bg-slate-50">
             <button
                 onClick={handleGenerate}
-                disabled={isGenerating || !repoPath || !startRef || !endRef}
+                disabled={isGenerating || !repoPath || !startRef || !endRef || (mode === "auto" && ollamaStatus !== "ok")}
                 className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-medium text-sm text-white shadow-sm transition-all
-                    ${isGenerating || !repoPath || !startRef || !endRef
+                    ${isGenerating || !repoPath || !startRef || !endRef || (mode === "auto" && ollamaStatus !== "ok")
                         ? 'bg-slate-300 cursor-not-allowed' 
                         : 'bg-slate-900 hover:bg-slate-800 active:scale-[0.98]'}
                     `}
