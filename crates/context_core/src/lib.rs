@@ -1,12 +1,17 @@
 use std::process::Command;
 use std::fs;
+use std::path::Path;
 use anyhow::{Result, Context, bail};
 use serde_json::json;
 
-pub fn run_git_command(args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .output()
+pub fn run_git_command(args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    let mut cmd = Command::new("git");
+    cmd.args(args);
+    if let Some(path) = cwd {
+        cmd.current_dir(path);
+    }
+    
+    let output = cmd.output()
         .context(format!("Failed to execute git command: {:?}", args))?;
 
     if output.status.success() {
@@ -37,12 +42,12 @@ pub fn read_file_content(file_path: Option<&String>, description: &str) -> Resul
     }
 }
 
-pub fn get_git_log(start: &str, end: &str) -> Result<String> {
+pub fn get_git_log(start: &str, end: &str, cwd: Option<&Path>) -> Result<String> {
     let range = format!("{}..{}", start, end);
-    run_git_command(&["log", "--pretty=format:- %s", &range])
+    run_git_command(&["log", "--pretty=format:- %s", &range], cwd)
 }
 
-pub fn get_git_diff(start: &str, end: &str) -> Result<String> {
+pub fn get_git_diff(start: &str, end: &str, cwd: Option<&Path>) -> Result<String> {
     let range = format!("{}..{}", start, end);
     let mut cmd_args = vec![
         "diff",
@@ -70,13 +75,18 @@ pub fn get_git_diff(start: &str, end: &str) -> Result<String> {
         cmd_args.push(exclude);
     }
     
-    run_git_command(&cmd_args)
+    run_git_command(&cmd_args, cwd)
 }
 
-pub fn generate_context(start: &str, end: &str, notes: Option<String>) -> Result<String> {
+pub fn list_git_refs(cwd: Option<&Path>) -> Result<Vec<String>> {
+    let output = run_git_command(&["for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/tags"], cwd)?;
+    Ok(output.lines().map(|s| s.to_string()).collect())
+}
+
+pub fn generate_context(start: &str, end: &str, notes: Option<String>, cwd: Option<&Path>) -> Result<String> {
     let notes_content = notes.unwrap_or_else(|| "No adhoc notes provided.".to_string());
-    let log_content = get_git_log(start, end)?;
-    let diff_content = get_git_diff(start, end)?;
+    let log_content = get_git_log(start, end, cwd)?;
+    let diff_content = get_git_diff(start, end, cwd)?;
 
     Ok(format!(
         r###"# Release Context

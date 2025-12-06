@@ -47,7 +47,7 @@ fn main() -> Result<()> {
     let system_prompt_content = read_file_content(args.system_prompt.as_ref(), "System Prompt")?;
 
     // 2. Generate Core Context
-    let context = generate_context(&args.start, &args.end, notes_content)?;
+    let context = generate_context(&args.start, &args.end, notes_content, None)?;
 
     // 3. Determine Mode (Ollama vs Manual)
     if let Some(model) = args.ollama_model {
