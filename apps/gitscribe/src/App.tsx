@@ -230,7 +230,7 @@ function App() {
       <aside className="w-80 border-r border-slate-200 bg-slate-50 flex flex-col">
         {/* Header */}
         <div className="h-14 flex items-center justify-between px-4 border-b border-slate-200">
-          <span className="font-bold text-lg tracking-tight text-slate-900">CommitIQ</span>
+          <span className="font-bold text-lg tracking-tight text-slate-900">GitScribe</span>
           
           <div className="flex items-center gap-1.5" title={ollamaStatus === "ok" ? "Ollama Connected" : "Ollama Disconnected"}>
             {ollamaStatus === "checking" && <Loader2 size={14} className="animate-spin text-slate-400" />}

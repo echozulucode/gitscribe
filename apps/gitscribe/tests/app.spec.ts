@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('CommitIQ GUI Features', () => {
+test.describe('GitScribe GUI Features', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:1420');
   });
