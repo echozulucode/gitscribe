@@ -6,6 +6,8 @@ use anyhow::{Result, Context, bail};
 use serde_json::json;
 use futures::StreamExt;
 
+pub mod jira;
+
 pub fn run_git_command(args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let mut cmd = Command::new("git");
     cmd.args(args);
@@ -85,22 +87,69 @@ pub fn list_git_refs(cwd: Option<&Path>) -> Result<Vec<String>> {
     Ok(output.lines().map(|s| s.to_string()).collect())
 }
 
-pub fn generate_context(start: &str, end: &str, notes: Option<String>, cwd: Option<&Path>) -> Result<String> {
+pub async fn generate_context(
+    start: &str, 
+    end: &str, 
+    notes: Option<String>, 
+    cwd: Option<&Path>,
+    jira_config: Option<jira::JiraConfig>
+) -> Result<String> {
     let notes_content = notes.unwrap_or_else(|| "No adhoc notes provided.".to_string());
     let log_content = get_git_log(start, end, cwd)?;
     let diff_content = get_git_diff(start, end, cwd)?;
+
+    let mut jira_section = String::new();
+
+    if let Some(config) = jira_config {
+        let keys = jira::extract_issue_keys(&log_content);
+        if !keys.is_empty() {
+            let client = reqwest::Client::new();
+            
+            let fetches = futures::stream::iter(keys)
+                .map(|key| {
+                    let client = &client;
+                    let config = &config;
+                    async move {
+                        jira::fetch_issue(client, config, &key).await
+                    }
+                })
+                .buffer_unordered(5) // Concurrency limit
+                .collect::<Vec<_>>()
+                .await;
+
+            let mut table_rows = Vec::new();
+            for res in fetches {
+                if let Ok(Some(issue)) = res {
+                    table_rows.push(format!("| {} | {} | {} | {} |", 
+                        issue.key, issue.issue_type, issue.status, issue.summary));
+                }
+            }
+
+            if !table_rows.is_empty() {
+                table_rows.sort(); // Keep deterministic output
+                jira_section = format!(
+                    "\n## Linked Jira Issues\n| Key | Type | Status | Summary |\n|---|---|---|---|\n{}\n", 
+                    table_rows.join("\n")
+                );
+            }
+        }
+    }
 
     Ok(format!(
         r###"# Release Context
 
 ## Strategic Context / Adhoc Notes
-{}\n
+{}
+{}
 ## Commit History
-{}\n
+{}
+
 ## Code Changes
 ```diff
-{}\n```"###,
+{}
+```"###,
         notes_content,
+        jira_section,
         log_content,
         diff_content
     ))

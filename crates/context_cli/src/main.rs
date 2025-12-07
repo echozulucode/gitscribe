@@ -2,6 +2,7 @@ use clap::Parser;
 use std::fs;
 use anyhow::{Result, Context};
 use context_core::{read_file_content, generate_context, call_ollama};
+use context_core::jira::JiraConfig;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -35,6 +36,14 @@ struct Args {
     /// Ollama API URL
     #[arg(long, default_value = "http://localhost:11434/api/generate")]
     ollama_url: String,
+
+    /// Jira Server URL (Optional)
+    #[arg(long)]
+    jira_url: Option<String>,
+
+    /// Jira Personal Access Token (Optional)
+    #[arg(long)]
+    jira_pat: Option<String>,
 }
 
 #[tokio::main]
@@ -47,15 +56,21 @@ async fn main() -> Result<()> {
     let notes_content = read_file_content(args.notes.as_ref(), "Notes")?;
     let system_prompt_content = read_file_content(args.system_prompt.as_ref(), "System Prompt")?;
 
-    // 2. Generate Core Context
-    let context = generate_context(&args.start, &args.end, notes_content, None)?;
+    // 2. Configure Jira
+    let jira_config = if let (Some(url), Some(pat)) = (args.jira_url, args.jira_pat) {
+        Some(JiraConfig { url, pat })
+    } else {
+        None
+    };
 
-    // 3. Determine Mode (Ollama vs Manual)
+    // 3. Generate Core Context
+    let context = generate_context(&args.start, &args.end, notes_content, None, jira_config).await?;
+
+    // 4. Determine Mode (Ollama vs Manual)
     if let Some(model) = args.ollama_model {
         // --- AUTO MODE (Ollama) ---
         println!("Mode: Auto-Generate (Ollama)");
         
-        // CLI uses simple blocking behavior without streaming callback for now, or we could print dots?
         let callback = |token: &str| {
             use std::io::{self, Write};
             print!("{}", token);

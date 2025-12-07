@@ -6,7 +6,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  // Use 'list' reporter to avoid blocking HTML report server on failure
+  // You can still use 'html' but set open: 'never' if you want the file generated but not opened
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     trace: 'on-first-retry',
   },

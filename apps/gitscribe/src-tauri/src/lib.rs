@@ -1,8 +1,9 @@
 use std::path::Path;
 use std::fs;
 use context_core::{generate_context, call_ollama, read_file_content, list_git_refs, list_ollama_models};
+use context_core::jira::JiraConfig;
 use tauri::{AppHandle, Emitter, Window, Manager};
-use tauri::menu::{Menu, MenuItem, Submenu, AboutMetadata};
+use tauri::menu::{Menu, MenuItem, Submenu};
 
 const DEFAULT_PROMPT: &str = r#"# Role
 You are an expert Technical Product Manager and Strategic Communications Lead. Your goal is to draft clean, professional, and transparent release notes that balance user engagement with risk management.
@@ -85,14 +86,53 @@ async fn get_ollama_models_cmd() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn generate_preview_cmd(repo_path: String, start: String, end: String, notes: String) -> Result<String, String> {
-    generate_context(&start, &end, Some(notes), Some(Path::new(&repo_path)))
+async fn generate_preview_cmd(
+    repo_path: String, 
+    start: String, 
+    end: String, 
+    notes: String, 
+    jira_url: Option<String>, 
+    jira_pat: Option<String>
+) -> Result<String, String> {
+    let jira_config = if let (Some(url), Some(pat)) = (jira_url, jira_pat) {
+        if !url.is_empty() && !pat.is_empty() {
+            Some(JiraConfig { url, pat })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    generate_context(&start, &end, Some(notes), Some(Path::new(&repo_path)), jira_config)
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn generate_ai_cmd(window: Window, repo_path: String, start: String, end: String, notes: String, model: String, system_prompt: Option<String>) -> Result<String, String> {
-    let context = generate_context(&start, &end, Some(notes), Some(Path::new(&repo_path)))
+async fn generate_ai_cmd(
+    window: Window, 
+    repo_path: String, 
+    start: String, 
+    end: String, 
+    notes: String, 
+    model: String, 
+    system_prompt: Option<String>,
+    jira_url: Option<String>,
+    jira_pat: Option<String>
+) -> Result<String, String> {
+    let jira_config = if let (Some(url), Some(pat)) = (jira_url, jira_pat) {
+        if !url.is_empty() && !pat.is_empty() {
+            Some(JiraConfig { url, pat })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let context = generate_context(&start, &end, Some(notes), Some(Path::new(&repo_path)), jira_config)
+        .await
         .map_err(|e| e.to_string())?;
     
     let url = "http://localhost:11434/api/generate";
@@ -159,10 +199,6 @@ pub fn run() {
                     std::process::exit(0);
                 }
                 "about" => {
-                    // In a real app we might open a custom window or use native about
-                    // Tauri v2's AboutMetadata is mostly for macOS app menu, 
-                    // here we'll just trigger a dialog via frontend or keep it simple.
-                    // For MVP, we can emit an event to show a modal in React.
                     let _ = app.emit("request-show-about", ());
                 }
                 _ => {}

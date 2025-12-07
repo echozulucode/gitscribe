@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
+import { SettingsModal } from "./SettingsModal";
 import "./App.css";
 
 // Initialize store outside component to avoid re-creation
@@ -23,44 +24,83 @@ function App() {
   const [mode, setMode] = useState<"manual" | "auto">("auto");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaStatus, setOllamaStatus] = useState<"checking" | "ok" | "error">("checking");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isJiraEnabled, setIsJiraEnabled] = useState(false);
   
   // Template State
   const [templates, setTemplates] = useState<string[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [systemPrompt, setSystemPrompt] = useState<string>("");
 
+  // Check for Tauri environment
+  // @ts-ignore
+  const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+
+  // Helper to load refs
+  const loadRefs = async (path: string) => {
+      if (!isTauri) return;
+      try {
+        const fetchedRefs = await invoke("get_repo_refs_cmd", { repoPath: path });
+        setRefs(fetchedRefs as string[]);
+      } catch (e) {
+        console.error("Failed to fetch refs:", e);
+      }
+  };
+
   // Load settings on startup
   useEffect(() => {
-    const loadSettings = async () => {
-      const savedRepoPath = await store.get("repoPath");
-      if (savedRepoPath) setRepoPath(savedRepoPath as string);
-      
-      const savedModel = await store.get("model");
-      if (savedModel) setModel(savedModel as string);
+    if (!isTauri) {
+        // MOCK DATA FOR BROWSER/TESTS
+        setOllamaModels(["llama3", "mistral"]);
+        setOllamaStatus("ok");
+        setTemplates(["default.md"]);
+        return;
+    }
 
-      const savedTemplate = await store.get("selectedTemplate");
-      if (savedTemplate) setSelectedTemplate(savedTemplate as string);
+    const loadSettings = async () => {
+      try {
+        const savedRepoPath = await store.get("repoPath");
+        if (savedRepoPath) {
+            setRepoPath(savedRepoPath as string);
+            if (savedRepoPath !== "") {
+                loadRefs(savedRepoPath as string);
+            }
+        }
+        
+        const savedModel = await store.get("model");
+        if (savedModel) setModel(savedModel as string);
+
+        const savedTemplate = await store.get("selectedTemplate");
+        if (savedTemplate) setSelectedTemplate(savedTemplate as string);
+
+        const savedJira = await store.get("isJiraEnabled");
+        if (savedJira !== null) setIsJiraEnabled(savedJira as boolean);
+      } catch (e) {
+        console.warn("Failed to load settings (running in browser?):", e);
+      }
     };
     loadSettings();
     checkOllama();
     loadTemplates();
-  }, []);
+  }, [isTauri]);
 
   // Save settings on change
-  useEffect(() => { store.set("repoPath", repoPath); }, [repoPath]);
-  useEffect(() => { store.set("model", model); }, [model]);
-  useEffect(() => { store.set("selectedTemplate", selectedTemplate); }, [selectedTemplate]);
+  useEffect(() => { if (isTauri) store.set("repoPath", repoPath); }, [repoPath, isTauri]);
+  useEffect(() => { if (isTauri) store.set("model", model); }, [model, isTauri]);
+  useEffect(() => { if (isTauri) store.set("selectedTemplate", selectedTemplate); }, [selectedTemplate, isTauri]);
+  useEffect(() => { if (isTauri) store.set("isJiraEnabled", isJiraEnabled); }, [isJiraEnabled, isTauri]);
 
   // When template changes, load content
   useEffect(() => {
-    if (selectedTemplate) {
+    if (isTauri && selectedTemplate) {
         invoke("load_template_cmd", { filename: selectedTemplate })
             .then(content => setSystemPrompt(content as string))
             .catch(e => console.error("Failed to load template:", e));
     }
-  }, [selectedTemplate]);
+  }, [selectedTemplate, isTauri]);
 
   const loadTemplates = async () => {
+      if (!isTauri) return;
       try {
           const list = await invoke("list_templates_cmd");
           const tmpls = list as string[];
@@ -74,6 +114,7 @@ function App() {
   };
 
   const checkOllama = async () => {
+    if (!isTauri) return;
     setOllamaStatus("checking");
     try {
       const models = await invoke("get_ollama_models_cmd");
@@ -93,6 +134,7 @@ function App() {
   };
 
   const handleOpenRepo = async () => {
+    if (!isTauri) return;
     const selected = await open({
       directory: true,
       multiple: false,
@@ -101,16 +143,12 @@ function App() {
 
     if (selected) {
       setRepoPath(selected as string);
-      try {
-        const fetchedRefs = await invoke("get_repo_refs_cmd", { repoPath: selected as string });
-        setRefs(fetchedRefs as string[]);
-      } catch (e) {
-        console.error("Failed to fetch refs:", e);
-      }
+      loadRefs(selected as string);
     }
   };
 
   const handleImportNotes = async () => {
+    if (!isTauri) return;
     const selected = await open({
       multiple: false,
       title: "Import Strategic Notes",
@@ -128,10 +166,19 @@ function App() {
   };
 
   const loadPreview = async () => {
+    if (!isTauri) return;
     if (!repoPath || !startRef || !endRef) return;
     try {
+      let jiraUrl, jiraPat;
+      if (isJiraEnabled) {
+          jiraUrl = await store.get("jira_url");
+          jiraPat = await store.get("jira_pat");
+      }
+
       const res = await invoke("generate_preview_cmd", {
-        repoPath, start: startRef, end: endRef, notes
+        repoPath, start: startRef, end: endRef, notes,
+        jiraUrl: jiraUrl || undefined,
+        jiraPat: jiraPat || undefined
       });
       setPreviewContent(res as string);
     } catch (e) {
@@ -148,6 +195,7 @@ function App() {
 
   // System Event Listeners
   useEffect(() => {
+    if (!isTauri) return;
     const unlistenRepo = listen("request-open-repo", () => {
         handleOpenRepo();
     });
@@ -159,28 +207,38 @@ function App() {
         unlistenRepo.then(f => f());
         unlistenAbout.then(f => f());
     };
-  }, []);
+  }, [isTauri]);
 
   // Streaming Listener
   useEffect(() => {
+    if (!isTauri) return;
     const unlisten = listen<string>("ai-token", (event) => {
         setAiContent(prev => prev + event.payload);
     });
     return () => {
         unlisten.then(f => f());
     };
-  }, []);
+  }, [isTauri]);
 
   const handleGenerate = async () => {
+    if (!isTauri) return;
     if (!repoPath || !startRef || !endRef) return;
     setIsGenerating(true);
     setActiveTab("result");
+
+    let jiraUrl, jiraPat;
+    if (isJiraEnabled) {
+        jiraUrl = await store.get("jira_url");
+        jiraPat = await store.get("jira_pat");
+    }
 
     if (mode === "manual") {
         setAiContent("Generating Context for Manual Copy...");
         try {
             const res = await invoke("generate_preview_cmd", {
-                repoPath, start: startRef, end: endRef, notes
+                repoPath, start: startRef, end: endRef, notes,
+                jiraUrl: jiraUrl || undefined,
+                jiraPat: jiraPat || undefined
             });
             // Use the loaded system prompt instead of placeholder
             const promptContent = systemPrompt || "[No template loaded]";
@@ -203,7 +261,9 @@ function App() {
             // Pass the loaded system prompt content
             await invoke("generate_ai_cmd", {
                 repoPath, start: startRef, end: endRef, notes, model, 
-                systemPrompt: systemPrompt || undefined
+                systemPrompt: systemPrompt || undefined,
+                jiraUrl: jiraUrl || undefined,
+                jiraPat: jiraPat || undefined
             });
         } catch (e) {
             setAiContent(prev => prev + `\n\nError generating release notes: ${e}`);
@@ -302,9 +362,28 @@ function App() {
 
           {/* Generation Settings (Prompt & Model) */}
           <div className="space-y-3 border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-2">
-                  <Settings size={14} className="text-slate-400"/>
-                  <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Settings</label>
+              <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                      <Settings size={14} className="text-slate-400"/>
+                      <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Settings</label>
+                  </div>
+                  <button 
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="text-[10px] text-blue-500 hover:text-blue-700 font-medium hover:underline"
+                  >
+                    Configure
+                  </button>
+              </div>
+
+              {/* Jira Toggle */}
+              <div className="flex items-center justify-between p-2 bg-slate-50 rounded-md border border-slate-100">
+                  <span className="text-[10px] font-medium text-slate-600">Enable Jira</span>
+                  <button 
+                    onClick={() => setIsJiraEnabled(!isJiraEnabled)}
+                    className={`w-8 h-4 rounded-full relative transition-colors ${isJiraEnabled ? 'bg-blue-500' : 'bg-slate-300'}`}
+                  >
+                      <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow-sm transition-all ${isJiraEnabled ? 'left-4.5' : 'left-0.5'}`} />
+                  </button>
               </div>
 
               {/* Prompt Template Selection */}
@@ -456,6 +535,8 @@ function App() {
             )}
         </div>
       </main>
+      
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }
