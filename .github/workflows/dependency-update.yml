@@ -23,7 +23,7 @@ jobs:
           cargo check --workspace
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           commit-message: "chore: update Rust dependencies"
           title: "chore: Update Rust Dependencies"
@@ -59,7 +59,7 @@ jobs:
         run: npm run build
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           commit-message: "chore: update NPM dependencies"
           title: "chore: Update NPM Dependencies"
