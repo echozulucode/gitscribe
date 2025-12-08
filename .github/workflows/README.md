@@ -7,69 +7,42 @@ This directory contains CI/CD workflows for the Git Release Context Generator pr
 ### 🔍 CI (`ci.yml`)
 **Trigger:** Push to `main`/`develop`, Pull Requests
 
-Runs on every push and PR to ensure code quality:
-- **Rust Check & Test**: Runs formatting, clippy, tests, and builds on Linux, Windows, and macOS
-- **Frontend Check**: TypeScript checks and frontend builds
-- **Tauri Build Test**: Full Tauri application builds on all platforms
-- **Security Audit**: Checks for known vulnerabilities in dependencies
+The main workflow that runs on every push and PR:
+- **Test Job**: Runs on Linux, Windows, and macOS
+  - Checks Rust formatting (`cargo fmt`)
+  - Runs Clippy lints (`cargo clippy`)
+  - Runs all tests (`cargo test`)
+  - Security audit with `cargo-audit` (Ubuntu only)
+- **Tauri Job**: Builds the full Tauri app on all platforms
+  - Installs platform-specific dependencies
+  - Builds complete installers
+  - Uploads artifacts for download
 
 **Key Features:**
-- Multi-platform testing (Ubuntu, Windows, macOS)
-- Rust caching for faster builds
-- Artifact uploads for inspection
-- Parallel job execution for speed
+- Multi-platform testing for reliability
+- Rust caching for fast builds (typically 2-5 minutes)
+- Parallel execution of tests and builds
+- Artifact uploads for testing installers before release
 
 ### 🚀 Release (`release.yml`)
-**Trigger:** Git tags matching `v*.*.*`, Manual workflow dispatch
+**Trigger:** Git tags matching `v*.*.*` (e.g., v1.0.0)
 
 Automated release process:
-- Creates GitHub releases
-- Builds Tauri apps for all platforms (DMG, MSI, DEB, AppImage)
-- Compiles CLI binaries for multiple architectures
-- Publishes crates to crates.io (when configured)
+- Builds Tauri installers for all platforms
+- Creates a draft GitHub release
+- Uploads installers automatically
 
-**Artifacts:**
-- Linux: `.deb`, `.AppImage`
-- Windows: `.msi`, `.exe`
-- macOS: `.dmg`, `.app` (Intel + Apple Silicon)
-- CLI binaries for Linux, Windows, macOS (x64 + ARM)
+**Generated Artifacts:**
+- Linux: `.deb` package, `.AppImage`
+- Windows: `.msi` installer
+- macOS: `.dmg` disk image
 
-**Configuration Needed:**
-- Set `CARGO_TOKEN` secret for crates.io publishing
-
-### 🎭 Playwright E2E (`playwright.yml`)
-**Trigger:** Push/PR to `main`/`develop` affecting `apps/gitscribe/**`
-
-End-to-end testing:
-- Runs Playwright tests on Linux, Windows, and macOS
-- Tests the complete Tauri application
-- Uploads test reports and screenshots on failure
-
-### 📦 Dependency Updates (`dependency-update.yml`)
-**Trigger:** Weekly on Mondays at 9 AM UTC, Manual
-
-Automated dependency management:
-- Updates Rust dependencies (`cargo update`)
-- Updates NPM dependencies (`npm update`)
-- Creates PRs for review
-- Runs basic checks to ensure updates don't break builds
-
-### 📊 Code Coverage (`coverage.yml`)
-**Trigger:** Push to `main`, Pull Requests
-
-Generates code coverage reports:
-- Uses `cargo-llvm-cov` for Rust coverage
-- Uploads to Codecov (requires `CODECOV_TOKEN`)
-- Provides coverage artifacts
-
-### ✅ Lint PR (`lint-pr.yml`)
-**Trigger:** Pull Request events
-
-Ensures PR quality:
-- Validates PR title follows Conventional Commits
-- Checks commit message format
-- Warns on large PRs (>500 lines)
-- Fails on very large PRs (>1000 lines)
+**Usage:**
+```bash
+git tag v1.0.0
+git push --tags
+```
+The workflow runs automatically and creates a draft release for you to review and publish.
 
 ## Dependabot (`dependabot.yml`)
 
@@ -84,15 +57,9 @@ Automated dependency updates via GitHub Dependabot:
 
 ## Setup Instructions
 
-### Required Secrets
+### Optional Configuration
 
-Add these secrets in GitHub repository settings:
-
-1. **For Releases:**
-   - `CARGO_TOKEN`: Token from crates.io for publishing Rust crates
-   
-2. **For Coverage:**
-   - `CODECOV_TOKEN`: Token from codecov.io (optional)
+No secrets are required for basic CI/CD functionality. The workflows work out of the box!
 
 ### Repository Settings
 
