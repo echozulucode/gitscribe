@@ -1,0 +1,68 @@
+version: 2
+updates:
+  # Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "octocat"  # Replace with your GitHub username
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+
+  # Tauri Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/apps/gitscribe/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "octocat"  # Replace with your GitHub username
+    labels:
+      - "dependencies"
+      - "rust"
+      - "tauri"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # NPM dependencies for Tauri frontend
+  - package-ecosystem: "npm"
+    directory: "/apps/gitscribe"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "octocat"  # Replace with your GitHub username
+    labels:
+      - "dependencies"
+      - "npm"
+      - "frontend"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "octocat"  # Replace with your GitHub username
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore"
+      include: "scope"

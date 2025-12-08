@@ -1,0 +1,94 @@
+name: Playwright E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'apps/gitscribe/**'
+      - '.github/workflows/playwright.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'apps/gitscribe/**'
+      - '.github/workflows/playwright.yml'
+
+jobs:
+  test:
+    name: E2E Tests
+    timeout-minutes: 60
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    defaults:
+      run:
+        working-directory: apps/gitscribe
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/gitscribe/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/gitscribe/src-tauri -> target"
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            xvfb
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run npm run test:e2e
+        env:
+          CI: true
+
+      - name: Run Playwright tests (Windows/macOS)
+        if: matrix.os != 'ubuntu-latest'
+        run: npm run test:e2e
+        env:
+          CI: true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: apps/gitscribe/playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload test screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-screenshots-${{ matrix.os }}
+          path: apps/gitscribe/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
