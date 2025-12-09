@@ -98,5 +98,5 @@ jobs:
         with:
           name: tauri-${{ matrix.platform }}
           path: |
-            apps/gitscribe/src-tauri/target/release/bundle/**/*
+            target/release/bundle/**/*
           if-no-files-found: warn
