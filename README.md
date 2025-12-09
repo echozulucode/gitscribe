@@ -9,7 +9,7 @@ Available as a modern Desktop GUI and a high-performance CLI tool.
 - **Automated Context Aggregation:** Intelligently combines git history and diffs while excluding noise (lockfiles, assets).
 - **AI-Powered Generation:** Connects directly to local LLMs (via Ollama) to write the notes for you.
 - **Strategic Input:** Prioritizes your "Adhoc Notes" to ensure the narrative matches your product goals.
-- **Jira Integration:** (Optional) Enriches context by fetching details from linked Jira tickets found in commit messages.
+- **Jira Integration:** (Optional) Enriches context by fetching details (summaries, descriptions, comments) from linked Jira tickets found in commit messages.
 - **Cross-Platform:** Runs on Windows, macOS, and Linux.
 
 ## 📦 Components
@@ -17,27 +17,52 @@ Available as a modern Desktop GUI and a high-performance CLI tool.
 This repository is organized as a Rust Workspace containing:
 
 1.  **Desktop App (`apps/gitscribe`):** A Tauri + React application for a visual, interactive workflow.
-2.  **CLI Tool (`crates/context_cli`):** A binary for command-line usage and CI/CD automation.
-3.  **Core Library (`crates/context_core`):** Shared logic for git operations and AI integration.
+2.  **CLI Tool (`crates/gitscribe_cli`):** A binary for command-line usage and CI/CD automation.
+3.  **Core Library (`crates/gitscribe_core`):** Shared logic for git operations, Jira fetching, and AI integration.
 
-## 🛠️ Quick Start
+## 🛠️ Development & Setup
 
-### Option 1: Desktop GUI (Windows)
+Follow these steps to get started after cloning the repository.
 
-1.  Download the latest installer (`.exe`) from the [Releases](#) page.
-2.  Run the installer and launch **GitScribe**.
-3.  Ensure [Ollama](https://ollama.com/) is installed and running (`ollama serve`).
+### Prerequisites
+*   **Rust:** [Install Rust](https://www.rust-lang.org/tools/install) (latest stable).
+*   **Node.js:** [Install Node.js](https://nodejs.org/) (v18+ recommended).
+*   **Ollama:** [Install Ollama](https://ollama.com/) and ensure it is running (`ollama serve`).
 
-### Option 2: CLI (Build from Source)
+### 1. Build the CLI
 
-**Prerequisites:** Rust (Cargo) & Git.
+The CLI is a pure Rust binary. You can build it from the project root.
 
 ```bash
-# Build the CLI tool
-cargo build --release -p context_cli
+# Debug Build (Faster compilation)
+cargo build -p gitscribe_cli
 
-# Run the binary
-./target/release/context_cli --start HEAD~5 --end HEAD --ollama-model llama3
+# Run Development Version
+cargo run -p gitscribe_cli -- --help
+
+# Production Build (Optimized)
+cargo build --release -p gitscribe_cli
+# Binary location: ./target/release/gitscribe_cli.exe (Windows) or ./target/release/gitscribe_cli (Unix)
+```
+
+### 2. Build the Desktop App (Tauri)
+
+The Desktop App uses Tauri (Rust) for the backend and React/Vite (TypeScript) for the frontend.
+
+```bash
+# Navigate to the app directory
+cd apps/gitscribe
+
+# Install frontend dependencies
+npm install
+
+# Run in Development Mode (Hot Reloading)
+# This starts the Vite dev server and the Tauri window simultaneously
+npm run tauri dev
+
+# Build for Production
+# This creates the installer/bundle for your OS
+npm run tauri build
 ```
 
 ## 📚 Documentation

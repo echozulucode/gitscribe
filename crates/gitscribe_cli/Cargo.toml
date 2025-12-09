@@ -1,10 +1,10 @@
 [package]
-name = "context_cli"
+name = "gitscribe_cli"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.3", features = ["derive"] }
 anyhow = "1.0.100"
-context_core = { path = "../context_core" }
+gitscribe_core = { path = "../gitscribe_core" }
 tokio = { version = "1.48.0", features = ["full", "macros"] }

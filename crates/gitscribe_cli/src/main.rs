@@ -1,8 +1,8 @@
+use anyhow::{Context, Result};
 use clap::Parser;
+use gitscribe_core::jira::JiraConfig;
+use gitscribe_core::{call_ollama, generate_context, read_file_content};
 use std::fs;
-use anyhow::{Result, Context};
-use context_core::{read_file_content, generate_context, call_ollama};
-use context_core::jira::JiraConfig;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -64,13 +64,14 @@ async fn main() -> Result<()> {
     };
 
     // 3. Generate Core Context
-    let context = generate_context(&args.start, &args.end, notes_content, None, jira_config).await?;
+    let context =
+        generate_context(&args.start, &args.end, notes_content, None, jira_config).await?;
 
     // 4. Determine Mode (Ollama vs Manual)
     if let Some(model) = args.ollama_model {
         // --- AUTO MODE (Ollama) ---
         println!("Mode: Auto-Generate (Ollama)");
-        
+
         let callback = |token: &str| {
             use std::io::{self, Write};
             print!("{}", token);
@@ -78,32 +79,36 @@ async fn main() -> Result<()> {
         };
 
         let final_output = call_ollama(
-            &model, 
-            &args.ollama_url, 
-            &context, 
+            &model,
+            &args.ollama_url,
+            &context,
             system_prompt_content.as_ref(),
-            Some(callback)
-        ).await?;
-        
+            Some(callback),
+        )
+        .await?;
+
         println!("\n\n--- Generation Complete ---");
 
-        let output_path = args.output.unwrap_or_else(|| "release_notes.md".to_string());
+        let output_path = args
+            .output
+            .unwrap_or_else(|| "release_notes.md".to_string());
         fs::write(&output_path, final_output)
             .context(format!("Failed to write output to {}", output_path))?;
-            
-        println!("Successfully generated release notes: {}", output_path);
 
+        println!("Successfully generated release notes: {}", output_path);
     } else {
         // --- MANUAL MODE ---
         println!("Mode: Context Generation (Manual)");
-        
+
         let final_content = if let Some(prompt) = system_prompt_content {
             format!("{}\n\n---\n**Data to Process:**\n\n{}", prompt, context)
         } else {
             context
         };
 
-        let output_path = args.output.unwrap_or_else(|| "release_context.md".to_string());
+        let output_path = args
+            .output
+            .unwrap_or_else(|| "release_context.md".to_string());
         fs::write(&output_path, final_content)
             .context(format!("Failed to write output to {}", output_path))?;
 

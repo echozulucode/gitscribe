@@ -1,9 +1,11 @@
-use std::path::Path;
+use gitscribe_core::jira::JiraConfig;
+use gitscribe_core::{
+    call_ollama, generate_context, list_git_refs, list_ollama_models, read_file_content,
+};
 use std::fs;
-use context_core::{generate_context, call_ollama, read_file_content, list_git_refs, list_ollama_models};
-use context_core::jira::JiraConfig;
-use tauri::{AppHandle, Emitter, Window, Manager};
+use std::path::Path;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Emitter, Manager, Window};
 
 const DEFAULT_PROMPT: &str = r##"# Role & Objective
 You are an expert **Technical Product Manager** and **Strategic Communications Lead**.
@@ -79,7 +81,7 @@ Please generate the response using the following Markdown structure. Do not outp
 fn ensure_templates_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     let app_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let templates_dir = app_dir.join("templates");
-    
+
     if !templates_dir.exists() {
         fs::create_dir_all(&templates_dir).map_err(|e| e.to_string())?;
     }
@@ -135,8 +137,7 @@ fn load_file_cmd(file_path: String) -> Result<String, String> {
 
 #[tauri::command]
 fn get_repo_refs_cmd(repo_path: String) -> Result<Vec<String>, String> {
-    list_git_refs(Some(Path::new(&repo_path)))
-        .map_err(|e| e.to_string())
+    list_git_refs(Some(Path::new(&repo_path))).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -147,12 +148,12 @@ async fn get_ollama_models_cmd() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 async fn generate_preview_cmd(
-    repo_path: String, 
-    start: String, 
-    end: String, 
-    notes: String, 
-    jira_url: Option<String>, 
-    jira_pat: Option<String>
+    repo_path: String,
+    start: String,
+    end: String,
+    notes: String,
+    jira_url: Option<String>,
+    jira_pat: Option<String>,
 ) -> Result<String, String> {
     let jira_config = if let (Some(url), Some(pat)) = (jira_url, jira_pat) {
         if !url.is_empty() && !pat.is_empty() {
@@ -164,22 +165,29 @@ async fn generate_preview_cmd(
         None
     };
 
-    generate_context(&start, &end, Some(notes), Some(Path::new(&repo_path)), jira_config)
-        .await
-        .map_err(|e| e.to_string())
+    generate_context(
+        &start,
+        &end,
+        Some(notes),
+        Some(Path::new(&repo_path)),
+        jira_config,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn generate_ai_cmd(
-    window: Window, 
-    repo_path: String, 
-    start: String, 
-    end: String, 
-    notes: String, 
-    model: String, 
+    window: Window,
+    repo_path: String,
+    start: String,
+    end: String,
+    notes: String,
+    model: String,
     system_prompt: Option<String>,
     jira_url: Option<String>,
-    jira_pat: Option<String>
+    jira_pat: Option<String>,
 ) -> Result<String, String> {
     let jira_config = if let (Some(url), Some(pat)) = (jira_url, jira_pat) {
         if !url.is_empty() && !pat.is_empty() {
@@ -191,20 +199,32 @@ async fn generate_ai_cmd(
         None
     };
 
-    let context = generate_context(&start, &end, Some(notes), Some(Path::new(&repo_path)), jira_config)
-        .await
-        .map_err(|e| e.to_string())?;
-    
+    let context = generate_context(
+        &start,
+        &end,
+        Some(notes),
+        Some(Path::new(&repo_path)),
+        jira_config,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
     let url = "http://localhost:11434/api/generate";
-    
+
     // Create a callback that emits events to the window
     let callback = move |token: &str| {
         let _ = window.emit("ai-token", token);
     };
 
-    call_ollama(&model, url, &context, system_prompt.as_ref(), Some(callback))
-        .await
-        .map_err(|e| e.to_string())
+    call_ollama(
+        &model,
+        url,
+        &context,
+        system_prompt.as_ref(),
+        Some(callback),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -216,29 +236,57 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             let handle = app.handle();
-            
+
             // File Menu
-            let open_repo = MenuItem::with_id(handle, "menu-open-repo", "&Open Repository...", true, Some("CmdOrCtrl+O"))?;
-            let open_templates = MenuItem::with_id(handle, "menu-open-templates", "Open &Templates Folder", true, None::<&str>)?;
+            let open_repo = MenuItem::with_id(
+                handle,
+                "menu-open-repo",
+                "&Open Repository...",
+                true,
+                Some("CmdOrCtrl+O"),
+            )?;
+            let open_templates = MenuItem::with_id(
+                handle,
+                "menu-open-templates",
+                "Open &Templates Folder",
+                true,
+                None::<&str>,
+            )?;
             // Separator (predefined menu item)
             let sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(handle, "quit", "&Quit", true, Some("CmdOrCtrl+Q"))?;
-            let file_menu = Submenu::with_items(handle, "File", true, &[
-                &open_repo,
-                &open_templates,
-                &sep as &_,         // separator
-                &quit
-            ])?;
+            let file_menu = Submenu::with_items(
+                handle,
+                "File",
+                true,
+                &[
+                    &open_repo,
+                    &open_templates,
+                    &sep as &_, // separator
+                    &quit,
+                ],
+            )?;
 
             // Edit Menu
-            let edit_menu = Submenu::with_items(handle, "Edit", true, &[
-                &MenuItem::with_id(handle, "undo", "Undo", true, Some("CmdOrCtrl+Z"))?,
-                &MenuItem::with_id(handle, "redo", "Redo", true, Some("CmdOrCtrl+Shift+Z"))?,
-                &MenuItem::with_id(handle, "cut", "Cut", true, Some("CmdOrCtrl+X"))?,
-                &MenuItem::with_id(handle, "copy", "Copy", true, Some("CmdOrCtrl+C"))?,
-                &MenuItem::with_id(handle, "paste", "Paste", true, Some("CmdOrCtrl+V"))?,
-                &MenuItem::with_id(handle, "select_all", "Select All", true, Some("CmdOrCtrl+A"))?,
-            ])?;
+            let edit_menu = Submenu::with_items(
+                handle,
+                "Edit",
+                true,
+                &[
+                    &MenuItem::with_id(handle, "undo", "Undo", true, Some("CmdOrCtrl+Z"))?,
+                    &MenuItem::with_id(handle, "redo", "Redo", true, Some("CmdOrCtrl+Shift+Z"))?,
+                    &MenuItem::with_id(handle, "cut", "Cut", true, Some("CmdOrCtrl+X"))?,
+                    &MenuItem::with_id(handle, "copy", "Copy", true, Some("CmdOrCtrl+C"))?,
+                    &MenuItem::with_id(handle, "paste", "Paste", true, Some("CmdOrCtrl+V"))?,
+                    &MenuItem::with_id(
+                        handle,
+                        "select_all",
+                        "Select All",
+                        true,
+                        Some("CmdOrCtrl+A"),
+                    )?,
+                ],
+            )?;
 
             // Help Menu
             let about = MenuItem::with_id(handle, "about", "About GitScribe", true, None::<&str>)?;
@@ -249,28 +297,26 @@ pub fn run() {
 
             Ok(())
         })
-        .on_menu_event(|app, event| {
-            match event.id().as_ref() {
-                "menu-open-templates" => {
-                    open_templates_folder(app);
-                }
-                "menu-open-repo" => {
-                    let _ = app.emit("request-open-repo", ());
-                }
-                "quit" => {
-                    std::process::exit(0);
-                }
-                "about" => {
-                    let _ = app.emit("request-show-about", ());
-                }
-                _ => {}
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "menu-open-templates" => {
+                open_templates_folder(app);
             }
+            "menu-open-repo" => {
+                let _ = app.emit("request-open-repo", ());
+            }
+            "quit" => {
+                std::process::exit(0);
+            }
+            "about" => {
+                let _ = app.emit("request-show-about", ());
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
-            generate_preview_cmd, 
-            generate_ai_cmd, 
-            load_file_cmd, 
-            get_repo_refs_cmd, 
+            generate_preview_cmd,
+            generate_ai_cmd,
+            load_file_cmd,
+            get_repo_refs_cmd,
             get_ollama_models_cmd,
             list_templates_cmd,
             load_template_cmd
