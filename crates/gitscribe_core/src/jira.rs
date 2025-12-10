@@ -17,6 +17,8 @@ struct JiraIssueFields {
     status: JiraStatus,
     issuetype: JiraType,
     comment: Option<JiraCommentContainer>,
+    updated: String,
+    resolutiondate: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +39,7 @@ struct JiraCommentContainer {
 #[derive(Debug, Deserialize)]
 struct JiraComment {
     body: String,
+    updated: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,7 +55,9 @@ pub struct JiraIssue {
     pub description: Option<String>,
     pub status: String,
     pub issue_type: String,
-    pub comments: Vec<String>,
+    pub comments: Vec<(String, Option<String>)>, // Body, Date
+    pub updated: String,
+    pub resolution_date: Option<String>,
 }
 
 pub fn extract_issue_keys(text: &str) -> Vec<String> {
@@ -94,7 +99,7 @@ pub async fn fetch_issue(
                         let comments = api_resp
                             .fields
                             .comment
-                            .map(|c| c.comments.into_iter().map(|ic| ic.body).collect())
+                            .map(|c| c.comments.into_iter().map(|ic| (ic.body, ic.updated)).collect())
                             .unwrap_or_default();
 
                         Ok(Some(JiraIssue {
@@ -104,6 +109,8 @@ pub async fn fetch_issue(
                             status: api_resp.fields.status.name,
                             issue_type: api_resp.fields.issuetype.name,
                             comments,
+                            updated: api_resp.fields.updated,
+                            resolution_date: api_resp.fields.resolutiondate,
                         }))
                     }
                     Err(e) => {

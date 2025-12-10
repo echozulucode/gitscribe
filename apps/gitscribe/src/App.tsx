@@ -377,7 +377,7 @@ function App() {
 
               {/* Jira Toggle */}
               <div className="flex items-center justify-between p-2 bg-slate-50 rounded-md border border-slate-100">
-                  <span className="text-[10px] font-medium text-slate-600">Enable Jira</span>
+                  <span className="text-[10px] font-medium text-slate-600">Enable Jira Issue Lookup</span>
                   <button 
                     onClick={() => setIsJiraEnabled(!isJiraEnabled)}
                     className={`w-8 h-4 rounded-full relative transition-colors ${isJiraEnabled ? 'bg-blue-500' : 'bg-slate-300'}`}

@@ -49,7 +49,7 @@ pub fn read_file_content(file_path: Option<&String>, description: &str) -> Resul
 
 pub fn get_git_log(start: &str, end: &str, cwd: Option<&Path>) -> Result<String> {
     let range = format!("{}..{}", start, end);
-    run_git_command(&["log", "--pretty=format:- %s", &range], cwd)
+    run_git_command(&["log", "--pretty=format:- [%ai] %s", &range], cwd)
 }
 
 pub fn get_git_diff(start: &str, end: &str, cwd: Option<&Path>) -> Result<String> {
@@ -128,17 +128,22 @@ pub async fn generate_context(
                         issue
                             .comments
                             .iter()
-                            .map(|c| format!("- {}", c.replace('\n', "\n  ")))
+                            .map(|(body, date)| {
+                                let date_str = date.as_deref().unwrap_or("Unknown Date");
+                                format!("- [{}] {}", date_str, body.replace('\n', "\n  "))
+                            })
                             .collect::<Vec<_>>()
                             .join("\n")
                     };
 
                     issue_sections.push_str(&format!(
-                        "### {} {}\n**Type:** {} | **Status:** {}\n\n**Description:**\n{}\n\n**Comments:**\n{}\n\n---\n",
+                        "### {} {}\n**Type:** {} | **Status:** {}\n**Updated:** {} | **Resolved:** {}\n\n**Description:**\n{}\n\n**Comments:**\n{}\n\n---\n",
                         issue.key,
                         issue.summary,
                         issue.issue_type,
                         issue.status,
+                        issue.updated,
+                        issue.resolution_date.as_deref().unwrap_or("N/A"),
                         issue.description.as_deref().unwrap_or("No description provided."),
                         comments_text
                     ));
