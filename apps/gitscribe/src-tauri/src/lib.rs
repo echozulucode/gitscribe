@@ -187,6 +187,11 @@ fn load_file_cmd(file_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn save_file_cmd(file_path: String, content: String) -> Result<(), String> {
+    fs::write(file_path, content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_repo_refs_cmd(repo_path: String) -> Result<Vec<String>, String> {
     list_git_refs(Some(Path::new(&repo_path))).map_err(|e| e.to_string())
 }
@@ -367,6 +372,7 @@ pub fn run() {
             generate_preview_cmd,
             generate_ai_cmd,
             load_file_cmd,
+            save_file_cmd,
             get_repo_refs_cmd,
             get_ollama_models_cmd,
             list_templates_cmd,

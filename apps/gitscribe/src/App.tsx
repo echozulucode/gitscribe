@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, Play, Loader2, FileText, Upload, Copy, Bot, RefreshCw, WifiOff, Settings } from "lucide-react";
+import { FolderOpen, Play, Loader2, FileText, Upload, Copy, Bot, RefreshCw, WifiOff, Settings, Save, Check } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
 import { SettingsModal } from "./SettingsModal";
@@ -26,6 +26,7 @@ function App() {
   const [ollamaStatus, setOllamaStatus] = useState<"checking" | "ok" | "error">("checking");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isJiraEnabled, setIsJiraEnabled] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
   
   // Template State
   const [templates, setTemplates] = useState<string[]>([]);
@@ -219,6 +220,38 @@ function App() {
         unlisten.then(f => f());
     };
   }, [isTauri]);
+
+  const handleCopy = async () => {
+    if (!aiContent) return;
+    try {
+      await navigator.clipboard.writeText(aiContent);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!aiContent) return;
+    try {
+      const suggestedName = mode === "auto" ? `release-notes-${endRef || "draft"}.md` : `context-${endRef || "draft"}.txt`;
+      const filePath = await save({
+        defaultPath: suggestedName,
+        filters: [{
+          name: mode === "auto" ? "Markdown" : "Text",
+          extensions: mode === "auto" ? ["md"] : ["txt"]
+        }]
+      });
+
+      if (filePath) {
+        await invoke("save_file_cmd", { filePath, content: aiContent });
+      }
+    } catch (err) {
+      console.error("Failed to save:", err);
+      alert(`Failed to save file: ${err}`);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!isTauri) return;
@@ -522,8 +555,28 @@ function App() {
                 <div className="p-8">
                     <div className="max-w-3xl mx-auto">
                          {aiContent ? (
-                             <div className="prose prose-slate prose-sm max-w-none bg-white p-8 rounded-lg border border-slate-200 shadow-sm">
-                                 <pre className="whitespace-pre-wrap font-sans">{aiContent}</pre>
+                             <div className="space-y-4">
+                                <div className="flex items-center justify-end gap-2">
+                                    <button
+                                        onClick={handleCopy}
+                                        className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm"
+                                        title="Copy to Clipboard"
+                                    >
+                                        {copySuccess ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                                        {copySuccess ? "Copied" : "Copy"}
+                                    </button>
+                                    <button
+                                        onClick={handleSave}
+                                        className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm"
+                                        title="Save to File"
+                                    >
+                                        <Save size={14} />
+                                        Save
+                                    </button>
+                                </div>
+                                <div className="prose prose-slate prose-sm max-w-none bg-white p-8 rounded-lg border border-slate-200 shadow-sm">
+                                     <pre className="whitespace-pre-wrap font-sans">{aiContent}</pre>
+                                </div>
                              </div>
                          ) : (
                             <div className="p-12 text-center text-slate-400">
